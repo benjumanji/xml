@@ -12,10 +12,12 @@
 --
 
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Text.XML.Light.Types where
 
 import Data.Typeable(Typeable)
 import Data.Data(Data)
+import Data.Text as T
 
 -- | A line is an Integer
 type Line     = Integer
@@ -23,7 +25,7 @@ type Line     = Integer
 -- | XML content
 data Content  = Elem Element
               | Text CData
-              | CRef String
+              | CRef T.Text
                 deriving (Show, Typeable, Data)
 
 -- | XML elements
@@ -37,13 +39,13 @@ data Element  = Element {
 -- | XML attributes
 data Attr     = Attr {
                   attrKey :: QName,
-                  attrVal :: String
+                  attrVal :: T.Text
                 } deriving (Eq, Ord, Show, Typeable, Data)
 
 -- | XML CData
 data CData    = CData {
                   cdVerbatim  :: CDataKind,
-                  cdData      :: String,
+                  cdData      :: T.Text,
                   cdLine      :: Maybe Line
                 } deriving (Show, Typeable, Data)
 
@@ -55,9 +57,9 @@ data CDataKind
 
 -- | XML qualified names
 data QName    = QName {
-                  qName   :: String,
-                  qURI    :: Maybe String,
-                  qPrefix :: Maybe String
+                  qName   :: T.Text,
+                  qURI    :: Maybe T.Text,
+                  qPrefix :: Maybe T.Text
                 } deriving (Show, Typeable, Data)
 
 

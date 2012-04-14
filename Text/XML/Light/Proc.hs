@@ -18,10 +18,12 @@ import Text.XML.Light.Types
 import Data.Maybe(listToMaybe)
 import Data.List(find)
 
+import qualified Data.Text as T
+
 -- | Get the text value of an XML element.  This function
 -- ignores non-text elements, and concatenates all text elements.
-strContent         :: Element -> String
-strContent e        = concatMap cdData $ onlyText $ elContent e
+strContent         :: Element -> T.Text
+strContent e        = T.concat . map cdData $ onlyText $ elContent e
 
 -- | Select only the elements from a list of XML content.
 onlyElems          :: [Content] -> [Element]
@@ -94,20 +96,20 @@ filterElementsName       :: (QName -> Bool) -> Element -> [Element]
 filterElementsName p e = filterElements (p.elName) e
 
 -- | Lookup the value of an attribute.
-findAttr          :: QName -> Element -> Maybe String
+findAttr          :: QName -> Element -> Maybe T.Text
 findAttr x e       = lookupAttr x (elAttribs e)
 
 -- | Lookup attribute name from list.
-lookupAttr        :: QName -> [Attr] -> Maybe String
+lookupAttr        :: QName -> [Attr] -> Maybe T.Text
 lookupAttr x       = lookupAttrBy (x ==)
 
 -- | Lookup the first attribute whose name satisfies the given predicate.
-lookupAttrBy       :: (QName -> Bool) -> [Attr] -> Maybe String
+lookupAttrBy       :: (QName -> Bool) -> [Attr] -> Maybe T.Text
 lookupAttrBy p as   = attrVal `fmap` find (p . attrKey) as
 
 -- | Lookup the value of the first attribute whose name
 -- satisfies the given predicate.
-findAttrBy         :: (QName -> Bool) -> Element -> Maybe String
+findAttrBy         :: (QName -> Bool) -> Element -> Maybe T.Text
 findAttrBy p e      = lookupAttrBy p (elAttribs e)
 
 
