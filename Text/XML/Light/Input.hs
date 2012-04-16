@@ -11,8 +11,13 @@
 -- Lightweight XML parsing
 --
 
+{-# LANGUAGE OverloadedStrings #-}
+
 module Text.XML.Light.Input (parseXML,parseXMLDoc) where
 
+import qualified Data.Text as T
+
+import Data.Monoid ( (<>) )
 import Text.XML.Light.Lexer
 import Text.XML.Light.Types
 import Text.XML.Light.Proc
@@ -25,7 +30,7 @@ parseXMLDoc  :: XmlSource s => s -> Maybe Element
 parseXMLDoc xs  = strip (parseXML xs)
   where strip cs = case onlyElems cs of
                     e : es
-                      | "?xml" `isPrefixOf` qName (elName e)
+                      | "?xml" `T.isPrefixOf` qName (elName e)
                           -> strip (map Elem es)
                       | otherwise -> Just e
                     _ -> Nothing
@@ -44,22 +49,22 @@ parse ts    = let (es,_,ts1) = nodes ([],Nothing) [] ts
 -- Information about namespaces.
 -- The first component is a map that associates prefixes to URIs,
 -- the second is the URI for the default namespace, if one was provided.
-type NSInfo = ([(String,String)],Maybe String)
+type NSInfo = ([(T.Text,T.Text)],Maybe T.Text)
 
 nodes :: NSInfo -> [QName] -> [Token] -> ([Content], [QName], [Token])
 
 nodes ns ps (TokCRef ref : ts) =
   let (es,qs,ts1) = nodes ns ps ts
-  in (CRef ref : es, qs, ts1)
+  in ((CRef $ T.pack ref) : es, qs, ts1)
 
 nodes ns ps (TokText txt : ts) =
   let (es,qs,ts1) = nodes ns ps ts
       (more,es1)  = case es of
                       Text cd : es1'
                         | cdVerbatim cd == cdVerbatim txt -> (cdData cd,es1')
-                      _                                   -> ([],es)
+                      _                                   -> ("",es)
 
-  in (Text txt { cdData = cdData txt ++ more } : es1, qs, ts1)
+  in (Text txt { cdData = cdData txt <> more } : es1, qs, ts1)
 
 nodes cur_info ps (TokStart p t as empty : ts) = (node : siblings, open, toks)
   where
@@ -109,6 +114,6 @@ annotAttr ns a@(Attr { attrKey = k}) =
 addNS :: Attr -> NSInfo -> NSInfo
 addNS (Attr { attrKey = key, attrVal = val }) (ns,def) =
   case (qPrefix key, qName key) of
-    (Nothing,"xmlns") -> (ns, if null val then Nothing else Just val)
+    (Nothing,"xmlns") -> (ns, if T.null val then Nothing else Just val)
     (Just "xmlns", k) -> ((k, val) : ns, def)
     _                 -> (ns,def)

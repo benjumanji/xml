@@ -32,6 +32,8 @@ module Text.XML.Light (
 
   ) where
 
+import qualified Data.Text as T
+
 import Text.XML.Light.Types
 import Text.XML.Light.Proc
 import Text.XML.Light.Input
@@ -46,7 +48,7 @@ add_attrs :: [Attr] -> Element -> Element
 add_attrs as e = e { elAttribs = as ++ elAttribs e }
 
 -- | Create an unqualified name.
-unqual :: String -> QName
+unqual :: T.Text -> QName
 unqual x = blank_name { qName = x }
 
 -- | A smart element constructor which uses the type of its argument
@@ -85,12 +87,12 @@ instance Node (Attr,CData)       where node n (a,c)  = node n ([a],c)
 instance Node [CData]            where node n es     = node n ([]::[Attr],es)
 instance Node CData              where node n e      = node n [e]
 
-instance Node ([Attr],String)    where
+instance Node ([Attr],T.Text)    where
   node n (as,t) = node n (as,blank_cdata { cdData = t })
 
-instance Node (Attr,String)      where node n (a,t)  = node n ([a],t)
-instance Node [Char]             where node n t      = node n ([]::[Attr],t)
+instance Node (Attr,T.Text)      where node n (a,t)  = node n ([a],t)
+instance Node T.Text             where node n t      = node n ([]::[Attr],t)
 
 -- | Create node with unqualified name
-unode :: Node t => String -> t -> Element
+unode :: Node t => T.Text -> t -> Element
 unode = node . unqual
