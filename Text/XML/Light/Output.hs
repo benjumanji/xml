@@ -29,6 +29,8 @@ import Data.List ( isPrefixOf )
 import Data.Monoid ( (<>) )
 
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Builder as B
 
 -- | The XML 1.0 header
 xml_header :: T.Text
@@ -75,15 +77,15 @@ prettyConfigPP      = useExtraWhiteSpace True defaultConfigPP
 -- | Pretty printing renders XML documents faithfully,
 -- with the exception that whitespace may be added\/removed
 -- in non-verbatim character data.
-ppTopElement       :: Element -> T.Text
+ppTopElement       :: Element -> LT.Text
 ppTopElement        = ppcTopElement prettyConfigPP
 
 -- | Pretty printing elements
-ppElement          :: Element -> T.Text
+ppElement          :: Element -> LT.Text
 ppElement           = ppcElement prettyConfigPP
 
 -- | Pretty printing content
-ppContent          :: Content -> T.Text
+ppContent          :: Content -> LT.Text
 ppContent           = ppcContent prettyConfigPP
 
 
@@ -91,46 +93,46 @@ ppContent           = ppcContent prettyConfigPP
 -- | Pretty printing renders XML documents faithfully,
 -- with the exception that whitespace may be added\/removed
 -- in non-verbatim character data.
-ppcTopElement      :: ConfigPP -> Element -> T.Text
+ppcTopElement      :: ConfigPP -> Element -> LT.Text
 ppcTopElement c e   = T.unlines [xml_header,ppcElement c e]
 
 -- | Pretty printing elements
-ppcElement         :: ConfigPP -> Element -> T.Text
-ppcElement c e      = ppElementS c "" e ""
+ppcElement         :: ConfigPP -> Element -> LT.Text
+ppcElement c e      = ppElementS c "" e
 
 -- | Pretty printing content
-ppcContent         :: ConfigPP -> Content -> T.Text
-ppcContent c x      = ppContentS c "" x ""
+ppcContent         :: ConfigPP -> Content -> LT.Text
+ppcContent c x      = ppContentS c "" x
 
 
 
 
 
 -- | Pretty printing content using ShowS
-ppContentS         :: ConfigPP -> T.Text -> Content -> TextS
-ppContentS c i x xs = case x of
-                        Elem e -> ppElementS c i e xs
-                        Text t -> ppCDataS c i t xs
-                        CRef r -> showCRefS r xs
+ppContentS         :: ConfigPP -> T.Text -> Content -> B.Builder
+ppContentS c i x = case x of
+                        Elem e -> ppElementS c i e
+                        Text t -> ppCDataS c i t
+                        CRef r -> showCRefS r
 
-ppElementS         :: ConfigPP -> T.Text -> Element -> TextS
-ppElementS c i e xs = i <> (tagStart (elName e) (elAttribs e) $
+ppElementS         :: ConfigPP -> Element -> B.Builder
+ppElementS c i e = tagStart (elName e) (elAttribs e) <>
   case elContent e of
-    [] | "?" `T.isPrefixOf` qName name -> " ?>" <> xs
-       | shortEmptyTag c name  -> " />" <> xs
-    [Text t] -> ">" <> ppCDataS c "" t (tagEnd name xs)
-    cs -> ">" <> nl <> (foldr ppSub (i <> tagEnd name xs) cs)
-      where ppSub e1 = ppContentS c (sp <> i) e1 . showText nl
-            (nl,sp)  = if prettify c then ("\n","  ") else ("","")
-  )
+    [] | "?" `T.isPrefixOf` qName name -> B.fromText " ?>"
+       | shortEmptyTag c name          -> B.fromText " />"
+    [Text t]                           -> B.singleton '>' <> ppCDataS c t <> (tagEnd name)
+    cs -> B.singleton '>' <> nl <> (foldr ppSub (i <> tagEnd name) cs)
+      where ppSub e1 = sp <> ppContentS c e1 <> nl
+            (nl,sp)  = if prettify c then (B.singleton '\n',B.fromText "  ") 
+                                     else (B.fromText T.empty, B.fromText T.empty)
   where name = elName e
 
-ppCDataS           :: ConfigPP -> T.Text -> CData -> TextS
-ppCDataS c i t xs   = i <> if cdVerbatim t /= CDataText || not (prettify c)
-                             then showCDataS t xs
-                             else T.foldr cons xs (showCData t)
+ppCDataS :: ConfigPP -> CData -> B.Builder
+ppCDataS c i t = i <> if cdVerbatim t /= CDataText || not (prettify c)
+                             then showCDataS t
+                             else T.foldr cons (showCData t)
 
-  where cons         :: Char -> T.Text -> T.Text
+  where cons         :: Char -> B.Builder -> B.Builder
         cons '\n' ys  = "\n" <> i <> ys
         cons y ys     = y `T.cons` ys
 
@@ -146,74 +148,65 @@ showContent        :: Content -> T.Text
 showContent c       = ppContentS defaultConfigPP "" c ""
 
 showElement        :: Element -> T.Text
-showElement c       = ppElementS defaultConfigPP "" c ""
+showElement c       = LT.toStrict . B.toLazyText $ ppElementS defaultConfigPP "" c
 
 showCData          :: CData -> T.Text
-showCData c         = ppCDataS defaultConfigPP "" c ""
+showCData c         = LT.toStrict . B.toLazyText $ ppCDataS defaultConfigPP c 
 
 -- Note: crefs should not contain '&', ';', etc.
-showCRefS          :: T.Text -> TextS
-showCRefS r xs      = "&" <> r <> ";" <> xs
+showCRefS          :: T.Text -> B.Builder
+showCRefS r         = B.fromText $ "&" <> r <> ";"
 
 -- | Convert a text element to characters.
-showCDataS         :: CData -> TextS
+showCDataS         :: CData -> B.Builder
 showCDataS cd =
  case cdVerbatim cd of
    CDataText     -> escStr (cdData cd)
-   CDataVerbatim -> showText "<![CDATA[" . escCData (cdData cd)
-                                           . showText "]]>"
-   CDataRaw      -> \ xs -> cdData cd <> xs
+   CDataVerbatim -> B.fromText "<![CDATA[" <> escCData (cdData cd)
+                                           <> B.fromText "]]>"
+   CDataRaw      -> B.fromText $ cdData cd
 
 --------------------------------------------------------------------------------
-escCData           :: T.Text -> TextS
-escCData cs | "]]>" `T.isPrefixOf` cs = showText "]]]]><![CDATA[>" . escCData (T.drop 3 cs)
-            | T.null cs = id
-            | otherwise = showCharT (T.head cs) . escCData (T.tail cs)
+escCData           :: T.Text -> B.Builder
+escCData cs | "]]>" `T.isPrefixOf` cs = B.fromText "]]]]><![CDATA[>" <> escCData (T.drop 3 cs)
+            | T.null cs = B.fromText T.empty
+            | otherwise = B.singleton (T.head cs) <> escCData (T.tail cs)
 
-escChar            :: Char -> TextS
+escChar            :: Char -> B.Builder
 escChar c = case c of
-  '<'   -> showText "&lt;"
-  '>'   -> showText "&gt;"
-  '&'   -> showText "&amp;"
-  '"'   -> showText "&quot;"
+  '<'   -> B.fromText "&lt;"
+  '>'   -> B.fromText "&gt;"
+  '&'   -> B.fromText "&amp;"
+  '"'   -> B.fromText "&quot;"
   -- we use &#39 instead of &apos; because IE apparently has difficulties
   -- rendering &apos; in xhtml.
   -- Reported by Rohan Drape <rohan.drape@gmail.com>.
-  '\''  -> showText "&#39;"
+  '\''  -> B.fromText "&#39;"
 
   -- NOTE: We escape '\r' explicitly because otherwise they get lost
   -- when parsed back in because of then end-of-line normalization rules.
-  _ | isPrint c || c == '\n' -> showCharT c
-    | otherwise -> showText $ "&#" <> oc <> ";"
+  _ | isPrint c || c == '\n' -> B.singleton c
+    | otherwise -> B.fromText $ "&#" <> oc <> ";"
       where oc = T.pack $ show $ ord c
 
-escStr             :: T.Text -> TextS
-escStr cs rs        = T.foldr escChar rs cs
+escStr             :: T.Text -> B.Builder
+escStr cs           = T.foldr (\c b -> escChar c <> b) (B.fromText T.empty) cs
 
-tagEnd             :: QName -> TextS
-tagEnd qn rs        = "</" <> showQName qn <> ">" <> rs
+tagEnd             :: QName -> B.Builder
+tagEnd qn           = B.fromText "</" <> showQName qn <> B.singleton '>'
 
-tagStart           :: QName -> [Attr] -> TextS
-tagStart qn as rs   = "<" <> showQName qn <> as_str <> rs
- where as_str       = if null as then "" else " " <> T.unwords (map showAttr as)
+tagStart           :: QName -> [Attr] -> B.Builder
+tagStart qn as      = B.singleton '<' <> showQName qn <> as_str
+ where as_str       = if null as then B.fromText "" 
+                                 else let bspace = B.singleton ' '
+                                      in foldr (\a b -> b <> bspace <> showAttr a) bspace as
 
-showAttr           :: Attr -> T.Text
-showAttr (Attr qn v) = showQName qn <> "=\"" <> escStr v "\""
+showAttr           :: Attr -> B.Builder
+showAttr (Attr qn v) = showQName qn <> B.fromText "=\"" <> escStr v <> B.singleton '"'
 
-showQName          :: QName -> T.Text
-showQName q         = pre <> qName q
-  where pre = case qPrefix q of
-                Nothing -> ""
-                Just p  -> p <> ":"
-
-type TextS = T.Text -> T.Text
-
-showText :: T.Text -> TextS
-showText = (<>)
-
-showCharT :: Char -> TextS
-showCharT x = (<>) (T.singleton x) 
-
-showt :: Show a => a -> TextS
-showt = showText . T.pack . show
-
+showQName          :: QName -> B.Builder
+showQName q         = B.fromText qn
+  where name = qName q
+        qn   = case qPrefix q of
+                Nothing -> name
+                Just p  -> p <> ":" <> name

@@ -53,7 +53,7 @@ type LChar              = (Line,Char)
 type LString            = [LChar]
 data Token              = TokStart Line QName [Attr] Bool  -- is empty?
                         | TokEnd Line QName
-                        | TokCRef String
+                        | TokCRef TS.Text
                         | TokText CData
                           deriving Show
 
@@ -78,7 +78,7 @@ tokens' cs@((l,_):_) = let (as,bs) = breakn ('<' ==) cs
                                                     , cdVerbatim = CDataText
                                                     , cdData = TS.singleton c
                                                     }
-                            Nothing -> TokCRef x
+                            Nothing -> TokCRef $ TS.pack x
 
 
 special :: LChar -> LString -> [Token]

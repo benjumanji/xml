@@ -55,7 +55,7 @@ nodes :: NSInfo -> [QName] -> [Token] -> ([Content], [QName], [Token])
 
 nodes ns ps (TokCRef ref : ts) =
   let (es,qs,ts1) = nodes ns ps ts
-  in ((CRef $ T.pack ref) : es, qs, ts1)
+  in ((CRef ref) : es, qs, ts1)
 
 nodes ns ps (TokText txt : ts) =
   let (es,qs,ts1) = nodes ns ps ts
