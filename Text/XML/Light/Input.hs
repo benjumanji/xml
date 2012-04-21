@@ -16,8 +16,14 @@
 module Text.XML.Light.Input (parseXML,parseXMLDoc) where
 
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.Builder as B
 
-import Data.Monoid ( (<>) )
+-- import Data.Monoid ( (<>) )
+
+import Data.Monoid ( Monoid()
+                   , mappend 
+                   )
 import Text.XML.Light.Lexer
 import Text.XML.Light.Types
 import Text.XML.Light.Proc
@@ -93,7 +99,7 @@ nodes ns ps (TokEnd p t : ts)   = let t1 = annotName ns t
                                     in (Text CData {
                                                cdLine = Just p,
                                                cdVerbatim = CDataText,
-                                               cdData = tagEnd t ""
+                                               cdData = LT.toStrict $ B.toLazyText $ tagEnd t
                                               } : es,qs, ts1)
 
 nodes _ ps []                 = ([],ps,[])

@@ -6,12 +6,18 @@ module Text.XML.Light.Lexer where
 import Text.XML.Light.Types
 
 import Data.Char (chr,isSpace)
-import Data.Monoid ( (<>) )
+-- import Data.Monoid ( (<>) )
+import Data.Monoid ( Monoid()
+                   , mappend 
+                   )
 import Numeric (readHex)
 import qualified Data.ByteString      as S
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Text            as TS
 import qualified Data.Text.Lazy       as TL
+
+(<>) :: Monoid a => a -> a -> a
+(<>) a b = a `mappend` b
 
 
 class XmlSource s where
@@ -104,9 +110,9 @@ special c cs =
                    } : tokens' ts
   where munch acc nesting ((_,'>') : ds) 
          | nesting == (0::Int) = ('>':acc,ds)
-	 | otherwise           = munch ('>':acc) (nesting-1) ds
+         | otherwise           = munch ('>':acc) (nesting-1) ds
         munch acc nesting ((_,'<') : ds)
-	 = munch ('<':acc) (nesting+1) ds
+          = munch ('<':acc) (nesting+1) ds
         munch acc n ((_,x) : ds) = munch (x:acc) n ds
         munch acc _ [] = (acc,[]) -- unterminated DTD markup
 

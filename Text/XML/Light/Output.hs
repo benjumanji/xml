@@ -26,11 +26,18 @@ module Text.XML.Light.Output
 import Text.XML.Light.Types
 import Data.Char
 import Data.List ( isPrefixOf )
-import Data.Monoid ( (<>) )
+-- import Data.Monoid ( (<>) )
+import Data.Monoid ( mappend
+                   , Monoid()
+                   )
 
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as B
+
+-- this is just to cover older versions of base
+(<>) :: Monoid a => a -> a -> a
+(<>) = mappend
 
 -- | The XML 1.0 header
 xml_header :: T.Text
@@ -77,7 +84,7 @@ prettyConfigPP      = useExtraWhiteSpace True defaultConfigPP
 -- | Pretty printing renders XML documents faithfully,
 -- with the exception that whitespace may be added\/removed
 -- in non-verbatim character data.
-ppTopElement       :: Element -> LT.Text
+ppTopElement       :: Element -> T.Text
 ppTopElement        = ppcTopElement prettyConfigPP
 
 -- | Pretty printing elements
@@ -93,16 +100,16 @@ ppContent           = ppcContent prettyConfigPP
 -- | Pretty printing renders XML documents faithfully,
 -- with the exception that whitespace may be added\/removed
 -- in non-verbatim character data.
-ppcTopElement      :: ConfigPP -> Element -> LT.Text
-ppcTopElement c e   = T.unlines [xml_header,ppcElement c e]
+ppcTopElement      :: ConfigPP -> Element -> T.Text
+ppcTopElement c e   = T.unlines [xml_header,LT.toStrict $ ppcElement c e]
 
 -- | Pretty printing elements
 ppcElement         :: ConfigPP -> Element -> LT.Text
-ppcElement c e      = ppElementS c "" e
+ppcElement c e      = B.toLazyText $ ppElementS c "" e
 
 -- | Pretty printing content
 ppcContent         :: ConfigPP -> Content -> LT.Text
-ppcContent c x      = ppContentS c "" x
+ppcContent c x      = B.toLazyText $ ppContentS c "" x
 
 
 
@@ -115,26 +122,28 @@ ppContentS c i x = case x of
                         Text t -> ppCDataS c i t
                         CRef r -> showCRefS r
 
-ppElementS         :: ConfigPP -> Element -> B.Builder
+ppElementS         :: ConfigPP -> T.Text -> Element -> B.Builder
 ppElementS c i e = tagStart (elName e) (elAttribs e) <>
   case elContent e of
     [] | "?" `T.isPrefixOf` qName name -> B.fromText " ?>"
        | shortEmptyTag c name          -> B.fromText " />"
-    [Text t]                           -> B.singleton '>' <> ppCDataS c t <> (tagEnd name)
-    cs -> B.singleton '>' <> nl <> (foldr ppSub (i <> tagEnd name) cs)
-      where ppSub e1 = sp <> ppContentS c e1 <> nl
+    [Text t]                           -> B.singleton '>' <> ppCDataS c i t <> (tagEnd name)
+    cs -> B.singleton '>' <> nl <> (foldr ppSub (B.fromText i <> tagEnd name) cs)
+      where ppSub e1 acc = sp <> ppContentS c i e1 <> nl <> acc
             (nl,sp)  = if prettify c then (B.singleton '\n',B.fromText "  ") 
                                      else (B.fromText T.empty, B.fromText T.empty)
   where name = elName e
 
-ppCDataS :: ConfigPP -> CData -> B.Builder
-ppCDataS c i t = i <> if cdVerbatim t /= CDataText || not (prettify c)
+ppCDataS :: ConfigPP -> T.Text -> CData -> B.Builder
+ppCDataS c i t = ib <> if cdVerbatim t /= CDataText || not (prettify c)
                              then showCDataS t
-                             else T.foldr cons (showCData t)
+                             else T.foldr cons (B.fromText T.empty) (showCData t)
 
-  where cons         :: Char -> B.Builder -> B.Builder
-        cons '\n' ys  = "\n" <> i <> ys
-        cons y ys     = y `T.cons` ys
+  where ib = B.fromText i
+        nb = B.singleton '\n' 
+        cons         :: Char -> B.Builder -> B.Builder
+        cons '\n' ys  = nb <> ib <> ys
+        cons y ys     = B.singleton y <> ys
 
 
 
@@ -145,13 +154,13 @@ showTopElement     :: Element -> T.Text
 showTopElement c    = xml_header <> showElement c
 
 showContent        :: Content -> T.Text
-showContent c       = ppContentS defaultConfigPP "" c ""
+showContent c       = LT.toStrict . B.toLazyText $ ppContentS defaultConfigPP "" c
 
 showElement        :: Element -> T.Text
 showElement c       = LT.toStrict . B.toLazyText $ ppElementS defaultConfigPP "" c
 
 showCData          :: CData -> T.Text
-showCData c         = LT.toStrict . B.toLazyText $ ppCDataS defaultConfigPP c 
+showCData c         = LT.toStrict . B.toLazyText $ ppCDataS defaultConfigPP "" c 
 
 -- Note: crefs should not contain '&', ';', etc.
 showCRefS          :: T.Text -> B.Builder
