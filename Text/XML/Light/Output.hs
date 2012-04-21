@@ -25,10 +25,10 @@ module Text.XML.Light.Output
 
 import Text.XML.Light.Types
 import Data.Char
-import Data.List ( isPrefixOf )
 -- import Data.Monoid ( (<>) )
 import Data.Monoid ( mappend
                    , Monoid()
+                   , mempty
                    )
 
 import qualified Data.Text as T
@@ -127,17 +127,17 @@ ppElementS c i e = tagStart (elName e) (elAttribs e) <>
   case elContent e of
     [] | "?" `T.isPrefixOf` qName name -> B.fromText " ?>"
        | shortEmptyTag c name          -> B.fromText " />"
-    [Text t]                           -> B.singleton '>' <> ppCDataS c i t <> (tagEnd name)
-    cs -> B.singleton '>' <> nl <> (foldr ppSub (B.fromText i <> tagEnd name) cs)
+    [Text t]                           -> B.singleton '>' <> ppCDataS c i t <> (tagEndB name)
+    cs -> B.singleton '>' <> nl <> (foldr ppSub (B.fromText i <> tagEndB name) cs)
       where ppSub e1 acc = sp <> ppContentS c i e1 <> nl <> acc
             (nl,sp)  = if prettify c then (B.singleton '\n',B.fromText "  ") 
-                                     else (B.fromText T.empty, B.fromText T.empty)
+                                     else (mempty, mempty)
   where name = elName e
 
 ppCDataS :: ConfigPP -> T.Text -> CData -> B.Builder
 ppCDataS c i t = ib <> if cdVerbatim t /= CDataText || not (prettify c)
                              then showCDataS t
-                             else T.foldr cons (B.fromText T.empty) (showCData t)
+                             else T.foldr cons mempty (showCData t)
 
   where ib = B.fromText i
         nb = B.singleton '\n' 
@@ -178,7 +178,7 @@ showCDataS cd =
 --------------------------------------------------------------------------------
 escCData           :: T.Text -> B.Builder
 escCData cs | "]]>" `T.isPrefixOf` cs = B.fromText "]]]]><![CDATA[>" <> escCData (T.drop 3 cs)
-            | T.null cs = B.fromText T.empty
+            | T.null cs = mempty
             | otherwise = B.singleton (T.head cs) <> escCData (T.tail cs)
 
 escChar            :: Char -> B.Builder
@@ -199,22 +199,28 @@ escChar c = case c of
       where oc = T.pack $ show $ ord c
 
 escStr             :: T.Text -> B.Builder
-escStr cs           = T.foldr (\c b -> escChar c <> b) (B.fromText T.empty) cs
+escStr cs           = T.foldr (\c b -> escChar c <> b) mempty cs
 
-tagEnd             :: QName -> B.Builder
-tagEnd qn           = B.fromText "</" <> showQName qn <> B.singleton '>'
+tagEndB :: QName -> B.Builder
+tagEndB qn = B.fromText "</" <> showQNameB qn <> B.singleton '>'
 
-tagStart           :: QName -> [Attr] -> B.Builder
-tagStart qn as      = B.singleton '<' <> showQName qn <> as_str
- where as_str       = if null as then B.fromText "" 
+tagEnd             :: QName -> T.Text
+tagEnd qn           = "</" <> showQName qn <> T.singleton '>'
+
+tagStart :: QName -> [Attr] -> B.Builder
+tagStart qn attrs = B.singleton '<' <> showQNameB qn <> as_str
+ where as_str = if null attrs then B.fromText "" 
                                  else let bspace = B.singleton ' '
-                                      in foldr (\a b -> b <> bspace <> showAttr a) bspace as
+                                      in foldr (\a b -> b <> bspace <> showAttr a) bspace attrs
 
 showAttr           :: Attr -> B.Builder
-showAttr (Attr qn v) = showQName qn <> B.fromText "=\"" <> escStr v <> B.singleton '"'
+showAttr (Attr qn v) = showQNameB qn <> B.fromText "=\"" <> escStr v <> B.singleton '"'
 
-showQName          :: QName -> B.Builder
-showQName q         = B.fromText qn
+showQNameB :: QName -> B.Builder
+showQNameB = B.fromText . showQName 
+
+showQName :: QName -> T.Text 
+showQName q = qn
   where name = qName q
         qn   = case qPrefix q of
                 Nothing -> name
